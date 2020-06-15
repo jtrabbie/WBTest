@@ -12,7 +12,7 @@ def main():
     # Remove all rows for which all important variables are 0
     df = df[(df.discharge1 != 0) | (df.discharge2 != 0) | (df.discharge3 != 0) | (df.discharge4 != 0) |
             (df.load1 != 0) | (df.load2 != 0) | (df.load3 != 0) | (df.load4 != 0)]
-    print("Percentage missing data:", 1 - len(df) / len_full_data)
+    # print("Percentage missing data:", 1 - len(df) / len_full_data)
     # Convert dates to datetime object
     for date in ['ata', 'eta', 'atd', 'earliesteta', 'latesteta']:
         df[date] = pd.to_datetime(df[date])
@@ -33,12 +33,16 @@ def main():
     mask = np.random.rand(len(df)) < 0.7
     train_df = df[mask]
     test_df = df[~mask]
+    all_discharges = {'discharge1', 'discharge2', 'discharge3', 'discharge4'}
+    all_loads = {'load1', 'load2', 'load3', 'load4'}
     predictors = list(set(list(train_df.columns)) - {'ata', 'eta', 'atd', 'earliesteta', 'latesteta', 'stevedorenames',
-                                                     'traveltype', 'isremarkable', 'hasnohamis'})
+                                                     'traveltype', 'isremarkable', 'hasnohamis'} - all_loads -
+                      all_discharges)
     # Create a decision tree, fit and predict data using a type of one cargo type
-    decision_tree_regressor(train_df, test_df, cargo_type='4', variable='load', predictors=predictors, max_tree_depth=5)
+    decision_tree_regressor(train_df, test_df, cargo_type='3', variable='discharge',
+                            predictors=predictors, max_tree_depth=5)
     # Note that cargo type 3 is very well predictable, while 2 and 4 are not
-    # linear_regression(train_df, test_df, cargo_type='4', predictors=predictors)
+    linear_regression(train_df, test_df, cargo_type='1', predictors=predictors)
 
 
 def decision_tree_regressor(train_df, test_df, cargo_type=None, variable='load', predictors=None, max_tree_depth=5):
@@ -46,9 +50,6 @@ def decision_tree_regressor(train_df, test_df, cargo_type=None, variable='load',
         raise ValueError("Regression variable must be either 'load' or 'discharge'")
     target_column = variable + cargo_type
     # Split the dataframes into numpy arrays of test and training data
-    all_discharges = {'discharge1', 'discharge2', 'discharge3', 'discharge4'}
-    all_loads = {'load1', 'load2', 'load3', 'load4'}
-    predictors = list(set(predictors) - all_discharges - all_loads)
     X_train = train_df[predictors].values
     y_train = train_df[target_column].values
     X_test = test_df[predictors].values
@@ -72,16 +73,15 @@ def decision_tree_regressor(train_df, test_df, cargo_type=None, variable='load',
 
 def linear_regression(train_df, test_df, cargo_type='1', predictors=None):
     # Split the dataframes into numpy arrays of test and training data
-    all_discharges = ['discharge1', 'discharge2', 'discharge3', 'discharge4']
     target_column = f"discharge{cargo_type}"
-    predictors = list(set(predictors) - set(all_discharges) - {target_column})
     X_train = train_df[predictors].values
-    X_train[np.isnan(X_train)] = 0
     y_train = train_df[target_column].values
     X_test = test_df[predictors].values
     y_test = test_df[target_column].values
+    X_train[np.isnan(X_train)] = 0
+    X_test[np.isnan(X_test)] = 0
     print(f"LASSO variable selection for variable discharge{cargo_type}")
-    reg = linear_model.Lasso(alpha=0.1, normalize=True)
+    reg = linear_model.Lasso(alpha=0.1, normalize=True, max_iter=1e4)
     reg.fit(X_train, y_train)
     lasso_out = reg.predict(X_test)
     print("MSE:", mean_squared_error(y_test, lasso_out))
